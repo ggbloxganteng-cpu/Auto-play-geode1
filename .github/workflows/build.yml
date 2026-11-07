@@ -1,0 +1,74 @@
+
+name: Auto Trajectory Android64
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "input/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate ZIP
+        run: |
+          test -f input/auto-trajectory.zip
+          unzip -t input/auto-trajectory.zip
+
+      - name: Extract source
+        run: |
+          mkdir -p extracted
+          unzip -q input/auto-trajectory.zip -d extracted
+
+          PROJECT_DIR=$(find extracted -maxdepth 4 \
+            -type f -name CMakeLists.txt \
+            -not -path '*/build/*' \
+            -printf '%h\n' | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "CMakeLists.txt tidak ditemukan dalam ZIP"
+            exit 1
+          fi
+
+          echo "Project directory: $PROJECT_DIR"
+
+          rsync -a "$PROJECT_DIR/" ./
+
+          test -f CMakeLists.txt
+          test -f mod.json
+          test -d src
+
+      - name: Build Geode Android64
+        id: build
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          target: Android64
+
+      - name: Verify output
+        run: |
+          echo "Build output:"
+          ls -lah "${{ steps.build.outputs.build-output }}"
+
+          find "${{ steps.build.outputs.build-output }}" \
+            -maxdepth 1 -type f -name '*.geode'
+
+          test -n "$(find "${{ steps.build.outputs.build-output }}" \
+            -maxdepth 1 -type f -name '*.geode' -print -quit)"
+
+      - name: Upload Android64 Geode
+        uses: actions/upload-artifact@v4
+        with:
+          name: Auto-Trajectory-Android64
+          path: ${{ steps.build.outputs.build-output }}/*.geode
+          if-no-files-found: error
+          retention-days: 14
